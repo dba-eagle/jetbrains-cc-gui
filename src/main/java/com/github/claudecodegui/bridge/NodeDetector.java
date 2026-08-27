@@ -548,9 +548,9 @@ public class NodeDetector {
         if ("node".equals(path)) {
             return true;
         }
-        // For WSL paths (Unix-style), extract basename manually
-        if (isWslPath(path)) {
-            int lastSlash = path.lastIndexOf('/');
+        // For WSL paths (Unix-style or UNC), extract basename manually
+        if (WslPathUtil.isAnyWslPath(path)) {
+            int lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
             String name = (lastSlash >= 0) ? path.substring(lastSlash + 1) : path;
             return "node".equalsIgnoreCase(name);
         }
@@ -626,17 +626,35 @@ public class NodeDetector {
      * @return version string if usable, otherwise null
      */
     public String verifyNodePath(String path) {
+        LOG.info("[NodeDetector] verifyNodePath called with: [" + path + "]");
+        LOG.info("[NodeDetector]   path length: " + (path != null ? path.length() : "null"));
+        if (path != null && !path.isEmpty()) {
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < Math.min(path.length(), 20); i++) {
+                hex.append(String.format("%02x ", (int) path.charAt(i)));
+            }
+            LOG.info("[NodeDetector]   first chars hex: " + hex.toString().trim());
+        }
+        LOG.info("[NodeDetector]   isAnyWslPath: " + WslPathUtil.isAnyWslPath(path));
+        LOG.info("[NodeDetector]   isWslUncPath: " + WslPathUtil.isWslUncPath(path));
+        LOG.info("[NodeDetector]   isWslPath: " + WslPathUtil.isWslPath(path));
+        LOG.info("[NodeDetector]   isValidNodeBinaryName: " + isValidNodeBinaryName(path));
         if (!isValidNodeBinaryName(path)) {
             LOG.warn("[NodeDetector] Rejected invalid Node.js binary name: " + path);
             return null;
         }
         try {
             ProcessBuilder pb;
-            if (isWslPath(path)) {
-                pb = new ProcessBuilder("wsl", path, "--version");
+            if (WslPathUtil.isAnyWslPath(path)) {
+                // Convert WSL UNC paths (e.g. \wsl.localhostUbuntuusrbinnode) to Linux form
+                // before passing to 'wsl' command, since 'wsl' expects Linux-style paths.
+                String linuxPath = WslPathUtil.convertToWslPath(path);
+                LOG.info("[NodeDetector] Converted WSL path: [" + path + "] -> [" + linuxPath + "]");
+                pb = new ProcessBuilder("wsl", "-e", linuxPath, "--version");
             } else {
                 pb = new ProcessBuilder(path, "--version");
             }
+            LOG.info("[NodeDetector] Executing command: " + pb.command());
             Process process = pb.start();
 
             String version = null;
@@ -830,7 +848,7 @@ public class NodeDetector {
         // Check file existence before attempting execution
         // Skip File.exists() check for WSL paths since Java's File class on Windows
         // cannot resolve Unix-style paths; verification will be done via 'wsl' command.
-        if (!"node".equals(path) && !isWslPath(path) && !new File(path).exists()) {
+        if (!"node".equals(path) && !WslPathUtil.isAnyWslPath(path) && !new File(path).exists()) {
             return NodeDetectionResult.failure("文件不存在，请检查路径是否正确：" + path);
         }
         String version = verifyNodePath(path);
@@ -838,7 +856,7 @@ public class NodeDetector {
         if (version != null) {
             result = NodeDetectionResult.success(path, version, NodeDetectionResult.DetectionMethod.KNOWN_PATH);
         } else {
-            String errorMsg = isWslPath(path)
+            String errorMsg = WslPathUtil.isAnyWslPath(path)
                     ? "无法通过 WSL 验证指定的 Node.js 路径: " + path + "（请确认 WSL 已安装且路径正确）"
                     : "无法验证指定的 Node.js 路径: " + path;
             result = NodeDetectionResult.failure(errorMsg);

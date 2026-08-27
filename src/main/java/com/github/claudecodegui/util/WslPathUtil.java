@@ -32,6 +32,28 @@ public final class WslPathUtil {
                 && path.charAt(0) == '/';
     }
 
+    /**
+     Returns true if {@code path} is a WSL UNC path on a Windows host
+     (e.g. {@code \wsl.localhostUbuntu...} or {@code \wslUbuntu...}).
+     These paths point into the WSL filesystem but use Windows UNC syntax
+     rather than Linux-style '/' paths, so they are NOT matched by {@link #isWslPath(String)}.
+     */
+    public static boolean isWslUncPath(String path) {
+        if (!PlatformUtils.isWindows() || path == null || path.isEmpty()) {
+            return false;
+        }
+        String lower = path.toLowerCase();
+        return lower.startsWith("\\\\wsl.localhost\\") || lower.startsWith("\\\\wsl$\\");
+    }
+
+    /**
+     Returns true if {@code path} refers to a file inside WSL, regardless of whether
+     it uses Linux-style ({@code /usr/bin/node}) or Windows UNC ({@code \wsl.localhostUbuntuusrbinnode}) syntax.
+     */
+    public static boolean isAnyWslPath(String path) {
+        return isWslPath(path) || isWslUncPath(path);
+    }
+
     /** Converts a Windows or UNC path to its Linux form (e.g. {@code C:\x} to {@code /mnt/c/x}, {@code \\wsl.localhost\Ubuntu\home\x} to {@code /home/x}). */
     public static String convertToWslPath(String windowsPath) {
         if (windowsPath == null || windowsPath.isEmpty()) {
@@ -226,7 +248,7 @@ public final class WslPathUtil {
 
     /** Returns the WSL home (backslash UNC, e.g. {@code \\wsl.localhost\Ubuntu\home\x}) when {@code nodePath} is a WSL binary, otherwise the native OS home. */
     public static String resolveHomeForFileOps(String nodePath) {
-        if (isWslPath(nodePath)) {
+        if (isAnyWslPath(nodePath)) {
             String wslHomeUnc = resolveWslHomeUncPath();
             if (wslHomeUnc != null && !wslHomeUnc.isEmpty()) {
                 // Must stay in the canonical backslash UNC form. Java's Windows path parser
@@ -246,9 +268,10 @@ public final class WslPathUtil {
     /** Builds a WSL-aware {@code [wsl] node <scriptPath>} command list; prepends {@code wsl} and converts scriptPath when {@code nodePath} is a WSL path. */
     public static List<String> buildNodeScriptCommand(String nodePath, String scriptPath) {
         List<String> command = new ArrayList<>();
-        if (isWslPath(nodePath)) {
+        if (isAnyWslPath(nodePath)) {
             command.add("wsl");
-            command.add(nodePath);
+            command.add("-e");
+            command.add(convertToWslPath(nodePath));
             command.add(convertToWslPath(scriptPath));
         } else {
             command.add(nodePath);
@@ -260,10 +283,13 @@ public final class WslPathUtil {
     /** Builds a WSL-aware {@code [wsl] node -e <scriptBody>} command list; prepends {@code wsl} when {@code nodePath} is a WSL path. */
     public static List<String> buildNodeInlineCommand(String nodePath, String scriptBody) {
         List<String> command = new ArrayList<>();
-        if (isWslPath(nodePath)) {
+        if (isAnyWslPath(nodePath)) {
             command.add("wsl");
+            command.add("-e");
+            command.add(convertToWslPath(nodePath));
+        } else {
+            command.add(nodePath);
         }
-        command.add(nodePath);
         command.add("-e");
         command.add(scriptBody);
         return command;
@@ -271,6 +297,6 @@ public final class WslPathUtil {
 
     /** Returns {@code path} as a Linux form (via {@link #convertToWslPath}) on WSL, or with backslashes doubled for safe inline JS embedding otherwise. */
     public static String resolveScriptPath(String nodePath, String path) {
-        return isWslPath(nodePath) ? convertToWslPath(path) : path.replace("\\", "\\\\");
+        return isAnyWslPath(nodePath) ? convertToWslPath(path) : path.replace("\\", "\\\\");
     }
 }
