@@ -9,8 +9,11 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
+import com.github.claudecodegui.util.WslPathUtil;
+
 import java.io.File;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Handles persistence of a user-provided Claude Code CLI executable path.
@@ -156,6 +159,20 @@ public class ClaudeCliPathHandler {
      * IntelliJ platform (the handler itself depends on {@link PropertiesComponent}).
      */
     static String validateCliPath(File f, String rawPath) {
+        // WSL UNC paths (e.g. \wsl.localhostUbuntuusrbinclaude) cannot be validated
+        // via java.io.File on Windows: File.exists() may return false due to slow 9P
+        // response, and File.canExecute() always returns false because the Windows JVM
+        // does not map POSIX execute bits. Use wsl -e test instead.
+        if (WslPathUtil.isAnyWslPath(rawPath)) {
+            String linuxPath = WslPathUtil.convertToWslPath(rawPath);
+            if (!wslFileExists(linuxPath)) {
+                return "File does not exist in WSL: " + rawPath;
+            }
+            if (!wslFileIsExecutable(linuxPath)) {
+                return "File is not executable in WSL (check permissions): " + rawPath;
+            }
+            return null;
+        }
         if (!f.exists()) {
             return "File does not exist: " + rawPath;
         }
@@ -166,5 +183,41 @@ public class ClaudeCliPathHandler {
             return "File is not executable (check permissions): " + rawPath;
         }
         return null;
+    }
+
+    /** Checks if a file exists in WSL via {@code wsl -e test -f}. */
+    private static boolean wslFileExists(String linuxPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("wsl", "-e", "test", "-f", linuxPath);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            LOG.debug("[ClaudeCliPathHandler] wslFileExists check failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Checks if a file is executable in WSL via {@code wsl -e test -x}. */
+    private static boolean wslFileIsExecutable(String linuxPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("wsl", "-e", "test", "-x", linuxPath);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            LOG.debug("[ClaudeCliPathHandler] wslFileIsExecutable check failed: " + e.getMessage());
+            return false;
+        }
     }
 }

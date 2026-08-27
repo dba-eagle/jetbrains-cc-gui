@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getClaudeCliPathOverride } from './claude-cli-path.js';
+import { getClaudeCliPathOverride, convertWslUncToLinuxIfNeeded } from './claude-cli-path.js';
 
 /**
  * Runs `fn` with CLAUDE_CODE_PATH set to `value` (or unset when `value === undefined`),
@@ -43,5 +43,46 @@ test('trims surrounding whitespace from the configured path', () => {
 test('returns the path unchanged when already clean', () => {
   withEnv('/opt/claude/bin/claude', () => {
     assert.equal(getClaudeCliPathOverride(), '/opt/claude/bin/claude');
+  });
+});
+
+test('convertWslUncToLinuxIfNeeded: converts backslash UNC wsl.localhost path', () => {
+  assert.equal(
+    convertWslUncToLinuxIfNeeded('\\wsl.localhost\Ubuntu\usr\bin\claude'),
+    '/usr/bin/claude'
+  );
+});
+
+test('convertWslUncToLinuxIfNeeded: converts backslash UNC wsl path', () => {
+  assert.equal(
+    convertWslUncToLinuxIfNeeded('\\wsl\Ubuntu\usr\bin\claude'),
+    '/usr/bin/claude'
+  );
+});
+
+test('convertWslUncToLinuxIfNeeded: converts forward-slash UNC path', () => {
+  assert.equal(
+    convertWslUncToLinuxIfNeeded('//wsl.localhost/Ubuntu/home/user/.local/bin/claude'),
+    '/home/user/.local/bin/claude'
+  );
+});
+
+test('convertWslUncToLinuxIfNeeded: returns native Windows path unchanged', () => {
+  assert.equal(
+    convertWslUncToLinuxIfNeeded('C:\Users\me\node.exe'),
+    'C:\Users\me\node.exe'
+  );
+});
+
+test('convertWslUncToLinuxIfNeeded: returns Linux path unchanged', () => {
+  assert.equal(
+    convertWslUncToLinuxIfNeeded('/usr/bin/claude'),
+    '/usr/bin/claude'
+  );
+});
+
+test('getClaudeCliPathOverride converts WSL UNC path from env to Linux path', () => {
+  withEnv('\\wsl.localhost\Ubuntu\usr\bin\claude', () => {
+    assert.equal(getClaudeCliPathOverride(), '/usr/bin/claude');
   });
 });

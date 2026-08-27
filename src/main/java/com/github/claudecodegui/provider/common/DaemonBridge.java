@@ -4,6 +4,7 @@ import com.github.claudecodegui.bridge.BridgeDirectoryResolver;
 import com.github.claudecodegui.bridge.EnvironmentConfigurator;
 import com.github.claudecodegui.bridge.NodeDetector;
 import com.github.claudecodegui.handler.ClaudeCliPathHandler;
+import com.github.claudecodegui.util.WslPathUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -347,8 +348,17 @@ public class DaemonBridge {
         String claudeCliPath = PropertiesComponent.getInstance()
                 .getValue(ClaudeCliPathHandler.CLAUDE_CLI_PATH_PROPERTY_KEY);
         if (claudeCliPath != null && !claudeCliPath.trim().isEmpty()) {
-            environment.put("CLAUDE_CODE_PATH", claudeCliPath.trim());
-            LOG.info("[DaemonBridge] Using custom Claude CLI: " + claudeCliPath.trim());
+            // When the daemon runs inside WSL (node path is a WSL path), the CLI path
+            // must also be a Linux path so that spawn() inside the WSL process can find it.
+            // A Windows UNC path like \wsl.localhostUbuntuusrbinclaude is meaningless
+            // inside WSL where backslash is not a path separator.
+            String effectiveCliPath = claudeCliPath.trim();
+            if (WslPathUtil.isAnyWslPath(nodePath) && WslPathUtil.isAnyWslPath(effectiveCliPath)) {
+                effectiveCliPath = WslPathUtil.convertToWslPath(effectiveCliPath);
+            }
+            environment.put("CLAUDE_CODE_PATH", effectiveCliPath);
+            LOG.info("[DaemonBridge] Using custom Claude CLI: " + effectiveCliPath
+                    + (effectiveCliPath.equals(claudeCliPath.trim()) ? "" : " (converted from " + claudeCliPath.trim() + ")"));
         }
 
         processBuilder.redirectErrorStream(false);
