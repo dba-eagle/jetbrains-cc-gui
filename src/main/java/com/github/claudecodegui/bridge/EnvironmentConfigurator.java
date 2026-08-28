@@ -33,6 +33,7 @@ public class EnvironmentConfigurator {
     private static final String CLAUDE_PERMISSION_ENV = "CLAUDE_PERMISSION_DIR";
     private static final String CLAUDE_SESSION_ID_ENV = "CLAUDE_SESSION_ID";
     private static final String CLAUDE_PERMISSION_SAFETY_NET_ENV = "CLAUDE_PERMISSION_SAFETY_NET_MS";
+    private static final String CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
     private static final String CODEX_HOME_ENV = "CODEX_HOME";
     private static final String HOME_ENV = "HOME";
     private static final Pattern WSL_MOUNT_PATH_PATTERN = Pattern.compile("^/mnt/([a-zA-Z])(?:/(.*))?$");
@@ -261,7 +262,8 @@ public class EnvironmentConfigurator {
     private static final String[] WSL_PROPAGATED_KEYS = {
             CLAUDE_PERMISSION_ENV,
             CLAUDE_SESSION_ID_ENV,
-            CLAUDE_PERMISSION_SAFETY_NET_ENV
+            CLAUDE_PERMISSION_SAFETY_NET_ENV,
+            CLAUDE_CODE_PATH_ENV
     };
 
     /** Appends permission-bridge keys to WSLENV so they reach the daemon inside WSL. */
